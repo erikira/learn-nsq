@@ -16,7 +16,6 @@ var (
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Llongfile)
 
 	consumer := NewConsumer("eri_test", "Channel", "eri_test")
 	consumers = append(consumers, consumer)
@@ -32,13 +31,14 @@ func main() {
 func NewConsumer(topic, channel, logPrefix string) *nsq.Consumer {
 	consumerConfig := nsq.NewConfig()
 	consumerConfig.MaxAttempts = 3
-	consumerConfig.MaxInFlight = 1
-	consumerConfig.MsgTimeout = 60 * time.Second
-	consumerConfig.MaxBackoffDuration = 0 * time.Second
+	consumerConfig.MaxInFlight = 2
+	consumerConfig.DefaultRequeueDelay = 10 * time.Second
+	consumerConfig.MaxRequeueDelay = 15 * time.Second
+	consumerConfig.BackoffStrategy = &ourBackoffStrategy{}
 
 	// Create new consumer
 	consumer, _ := nsq.NewConsumer(topic, channel, consumerConfig)
-	consumer.SetLogger(log.New(os.Stderr, logPrefix, log.Ltime), nsq.LogLevelError)
+	consumer.SetLogger(log.New(os.Stderr, logPrefix, log.Ltime), nsq.LogLevelWarning)
 	consumer.AddConcurrentHandlers(NewHandler(HandleSaveOrder), consumerConfig.MaxInFlight)
 
 	// Open connection to NSQ
@@ -58,7 +58,7 @@ func NewHandler(handler func(m *nsq.Message) error) nsq.HandlerFunc {
 
 // HandleSaveOrder receive and process the message
 func HandleSaveOrder(m *nsq.Message) error {
-
+	log.Println("consumed message for attempt ", m.Attempts)
 	return errors.New("foo bar")
 }
 
@@ -69,4 +69,10 @@ func StopConsumers() {
 			consumers[c].Stop()
 		}
 	}
+}
+
+type ourBackoffStrategy struct{}
+
+func (o *ourBackoffStrategy) Calculate(attempt int) time.Duration {
+	return time.Duration(20) * time.Second
 }
