@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"log"
 	"os"
 	"os/signal"
@@ -34,6 +33,7 @@ func NewConsumer(topic, channel, logPrefix string) *nsq.Consumer {
 	consumerConfig.MaxInFlight = 2
 	consumerConfig.DefaultRequeueDelay = 10 * time.Second
 	consumerConfig.MaxRequeueDelay = 15 * time.Second
+	// consumerConfig.MaxBackoffDuration = 0 * time.Second
 	consumerConfig.BackoffStrategy = &ourBackoffStrategy{}
 
 	// Create new consumer
@@ -59,7 +59,19 @@ func NewHandler(handler func(m *nsq.Message) error) nsq.HandlerFunc {
 // HandleSaveOrder receive and process the message
 func HandleSaveOrder(m *nsq.Message) error {
 	log.Println("consumed message for attempt ", m.Attempts)
-	return errors.New("foo bar")
+
+	// there is no difference between return nil or return error after m.Requeue
+	// m.Requeue will affect consumer backoff config regardless handler return error or nil
+	// when handler return error, NSQ will log the error
+	m.Requeue(5 * time.Second)
+	// it is useless to use both m.Requeue and m.RequeueWithoutBackoff together
+	// NSQ will will whichever called first
+	// In this case, NSQ will use m.Requeue and ignore m.RequeueWithoutBackoff
+	// ---
+	// m.RequeueWithoutBackoff tell NSQ to requeue without triggering the consumer backoff strategy
+	m.RequeueWithoutBackoff(5 * time.Second)
+	log.Println("after m.Requeue")
+	return nil
 }
 
 // StopConsumers to stop all consumers
